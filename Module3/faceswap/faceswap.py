@@ -1,9 +1,37 @@
 import cv2
 import numpy as np
 
+def resize_and_pad(img, target_size):
+    h, w = img.shape[:2]
+    sh, sw = target_size
+    
+    # Calculate scaling factor
+    scale = min(sh/h, sw/w)
+    
+    # Calculate new dimensions
+    new_h, new_w = int(h * scale), int(w * scale)
+    
+    # Resize the image
+    resized = cv2.resize(img, (new_w, new_h))
+    
+    # Create a black canvas of the target size
+    padded = np.zeros((sh, sw, 3), dtype=np.uint8)
+    
+    # Calculate padding
+    pad_h = (sh - new_h) // 2
+    pad_w = (sw - new_w) // 2
+    
+    # Place the resized image on the canvas
+    padded[pad_h:pad_h+new_h, pad_w:pad_w+new_w] = resized
+    
+    return padded
+
 # Load the two images
 source_image = cv2.imread('PXL_20240929_215502349.MP.png')
 target_image = cv2.imread('A_man_standing_confidently_in_a_full-body_portrait.jpg')
+
+# Resize and pad source image to match target image dimensions
+source_image = resize_and_pad(source_image, target_image.shape[:2])
 
 # Convert images to grayscale
 target_gray = cv2.cvtColor(target_image, cv2.COLOR_BGR2GRAY)
@@ -40,62 +68,34 @@ source_face = source_image[source_y:source_y+source_h, source_x:source_x+source_
 # Resize the source face to match the dimensions of the target face
 resized_source_face = cv2.resize(source_face, (target_w, target_h))
 
-# Analyze the target image's face using Canny edge detection
-target_face_region = target_gray[target_y:target_y+target_h, target_x:target_x+target_w]
-target_face_edges = cv2.Canny(target_face_region, 100, 200)
-
-# Detect contours of the target face for edge matching
-contours, _ = cv2.findContours(target_face_edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-# Ensure that we have contours before proceeding
-if len(contours) > 0:
-    # Convert contour points to a 2D array of integers
-    target_contour_points = np.array(contours[0], dtype=np.int32)
-else:
-    raise Exception("No contours found in the target face region")
-
-# Create a mask for the full target image (full size, not just the face region)
+# Create a mask for the full target image
 full_target_mask = np.zeros(target_image.shape[:2], dtype=np.uint8)
 
-# Create a small mask for the target face region
-target_face_mask = np.zeros_like(target_face_region)
-cv2.fillConvexPoly(target_face_mask, target_contour_points, (255, 255, 255))
+# Create an elliptical mask for better blending
+center = (target_w // 2, target_h // 2)
+axes = (target_w // 2, target_h // 2)
+cv2.ellipse(full_target_mask, (target_x + center[0], target_y + center[1]), axes, 0, 0, 360, (255, 255, 255), -1)
 
-# Place the small face mask into the corresponding region of the full-size mask
-full_target_mask[target_y:target_y+target_h, target_x:target_x+target_w] = target_face_mask
-
-# Debugging dimensions and placements
-print(f"Full Target Mask Shape: {full_target_mask.shape}")
-print(f"Resized Source Face Shape: {resized_source_face.shape}")
-
-# Optional: Match histograms to better blend the source face into the target image
+# Match histograms to better blend the source face into the target image
 source_face_histogram_equalized = cv2.equalizeHist(cv2.cvtColor(resized_source_face, cv2.COLOR_BGR2GRAY))
 source_face_final = cv2.merge((source_face_histogram_equalized, source_face_histogram_equalized, source_face_histogram_equalized))
 
 # Calculate the center of the target face region for seamless cloning
-center_x = target_x + target_w // 2
-center_y = target_y + target_h // 2
-
-# Boundary check to ensure that the center point and source dimensions fit within the target image
-image_height, image_width = target_image.shape[:2]
-
-# Ensure the calculated center is within bounds
-center_x = min(max(center_x, target_w // 2), image_width - target_w // 2)
-center_y = min(max(center_y, target_h // 2), image_height - target_h // 2)
-
-center = (center_x, center_y)
-
-# Debugging center and dimensions
+center = (target_x + target_w // 2, target_y + target_h // 2)
 print(f"Calculated Center: {center}")
-print(f"Target Image Width: {image_width}, Height: {image_height}")
-print(f"Source Image Dimensions (w={target_w}, h={target_h})")
 
-# Ensure the source face is in the same channel format as the target
-if len(source_face_final.shape) == 2:
-    source_face_final = cv2.cvtColor(source_face_final, cv2.COLOR_GRAY2BGR)
+# Ensure source_face_final matches the dimensions of the target face region
+source_face_final = cv2.resize(source_face_final, (target_w, target_h))
 
-# Perform seamless cloning using the new full-size mask
-output_image = cv2.seamlessClone(source_face_final, target_image, full_target_mask, center, cv2.NORMAL_CLONE)
+# Create a region of interest (ROI) in the target image
+roi = target_image[target_y:target_y+target_h, target_x:target_x+target_w]
+
+# Perform seamless cloning on the ROI
+output_roi = cv2.seamlessClone(source_face_final, roi, full_target_mask[target_y:target_y+target_h, target_x:target_x+target_w], (target_w//2, target_h//2), cv2.NORMAL_CLONE)
+
+# Place the output ROI back into the target image
+output_image = target_image.copy()
+output_image[target_y:target_y+target_h, target_x:target_x+target_w] = output_roi
 
 # Display the result
 cv2.imshow("Face Swapped Image", output_image)
