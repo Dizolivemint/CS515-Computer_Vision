@@ -162,3 +162,9 @@ cython_debug/
 #.idea/
 
 images/
+
+# ignore articles since they are for educational purposes only
+*.pdf
+
+# ignore huge dat files that will be downloaded automatically
+*.dat
