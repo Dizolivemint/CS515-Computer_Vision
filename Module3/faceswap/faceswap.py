@@ -3,6 +3,7 @@ import numpy as np
 import dlib
 import os
 import sys
+import glob
 
 def get_face_mask(img, landmarks):
     mask = np.zeros(img.shape[:2], dtype=np.float64)
@@ -93,13 +94,36 @@ except RuntimeError:
     sys.exit(1)
 
 # Load the two images
-source_image_path = 'PXL_20240929_215502349.MP.png'
-target_image_path = 'A_man_standing_confidently_in_a_full-body_portrait.jpg'
+# Define directories for source and target images with backslashes
+source_directory = os.path.join('.', 'source')
+target_directory = os.path.join('.', 'target')
 
-if not os.path.isfile(source_image_path) or not os.path.isfile(target_image_path):
-    print(f"Error: Source image ({source_image_path}) or target image ({target_image_path}) not found.")
-    print("Please ensure both images are in the current directory.")
-    sys.exit(1)
+# Get the first image in the source directory (either .jpg or .png)
+source_image_list = glob.glob(os.path.join(source_directory, '*.[jp][pn]g'))  # Matches .jpg and .png
+if len(source_image_list) == 0:
+    raise Exception(f"No images found in source directory: {os.path.abspath(source_directory)}")
+source_image_path = source_image_list[0]
+
+# Get the first image in the target directory (either .jpg or .png)
+target_image_list = glob.glob(os.path.join(target_directory, '*.[jp][pn]g'))  # Matches .jpg and .png
+if len(target_image_list) == 0:
+    raise Exception(f"No images found in target directory: {os.path.abspath(target_directory)}")
+target_image_path = target_image_list[0]
+
+# Replace slashes with backslashes for Windows compatibility
+source_image_path = source_image_path.replace('/', '\\')
+target_image_path = target_image_path.replace('/', '\\')
+
+# Debugging prints for loaded file paths
+print(f"Using source image: {os.path.abspath(source_image_path)}")
+print(f"Using target image: {os.path.abspath(target_image_path)}")
+
+# Check if images are correctly found
+if not os.path.isfile(source_image_path):
+    raise FileNotFoundError(f"Source image not found at: {source_image_path}")
+
+if not os.path.isfile(target_image_path):
+    raise FileNotFoundError(f"Target image not found at: {target_image_path}")
 
 source_image = cv2.imread(source_image_path)
 target_image = cv2.imread(target_image_path)
@@ -173,6 +197,13 @@ cv2.imshow("Face Swapped Image", output)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
-# Save the final output
-cv2.imwrite("face_swapped_output.jpg", output)
+# Use output directory to save the result, if it doesn't exist, create it
+output_directory = './output'
+if not os.path.exists(output_directory):
+    os.makedirs(output_directory)
+    
+output_path = os.path.join(output_directory, 'face_swapped_output.jpg')
+
+# Save the output image
+cv2.imwrite(output_path, output)
 print("Face swap completed successfully. Output saved as 'face_swapped_output.jpg'.")
