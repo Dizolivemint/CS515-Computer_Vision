@@ -1,106 +1,136 @@
 import cv2
 import numpy as np
+import dlib
+import os
+import sys
 
-def resize_and_pad(img, target_size):
-    h, w = img.shape[:2]
-    sh, sw = target_size
-    
-    # Calculate scaling factor
-    scale = min(sh/h, sw/w)
-    
-    # Calculate new dimensions
-    new_h, new_w = int(h * scale), int(w * scale)
-    
-    # Resize the image
-    resized = cv2.resize(img, (new_w, new_h))
-    
-    # Create a black canvas of the target size
-    padded = np.zeros((sh, sw, 3), dtype=np.uint8)
-    
-    # Calculate padding
-    pad_h = (sh - new_h) // 2
-    pad_w = (sw - new_w) // 2
-    
-    # Place the resized image on the canvas
-    padded[pad_h:pad_h+new_h, pad_w:pad_w+new_w] = resized
-    
-    return padded
+def get_face_mask(img, landmarks):
+    mask = np.zeros(img.shape[:2], dtype=np.float64)
+    points = np.array(landmarks, np.int32)
+    convexhull = cv2.convexHull(points)
+    cv2.fillConvexPoly(mask, convexhull, 1)
+    mask = np.array([mask, mask, mask]).transpose((1, 2, 0))
+    return mask
+
+def correct_colours(im1, im2, landmarks1):
+    blur_amount = 0.6 * np.linalg.norm(
+                              np.mean(landmarks1[36:42], axis=0) -
+                              np.mean(landmarks1[42:48], axis=0))
+    blur_amount = int(blur_amount)
+    if blur_amount % 2 == 0:
+        blur_amount += 1
+    im1_blur = cv2.GaussianBlur(im1, (blur_amount, blur_amount), 0)
+    im2_blur = cv2.GaussianBlur(im2, (blur_amount, blur_amount), 0)
+    im2_blur += (128 * (im2_blur <= 1.0)).astype(im2_blur.dtype)
+    return (im2.astype(np.float64) * im1_blur.astype(np.float64) /
+                                                im2_blur.astype(np.float64))
+
+def download_shape_predictor():
+    import urllib.request
+    import bz2
+
+    url = "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2"
+    bz2_file = "shape_predictor_68_face_landmarks.dat.bz2"
+    dat_file = "shape_predictor_68_face_landmarks.dat"
+
+    print("Downloading shape predictor file...")
+    urllib.request.urlretrieve(url, bz2_file)
+
+    print("Extracting shape predictor file...")
+    with bz2.BZ2File(bz2_file) as fr, open(dat_file, 'wb') as fw:
+        fw.write(fr.read())
+
+    os.remove(bz2_file)
+    print("Shape predictor file downloaded and extracted successfully.")
+
+# Check if the shape predictor file exists, if not, download it
+predictor_path = "shape_predictor_68_face_landmarks.dat"
+if not os.path.isfile(predictor_path):
+    print(f"Shape predictor file not found: {predictor_path}")
+    download_shape_predictor()
+
+try:
+    detector = dlib.get_frontal_face_detector()
+    predictor = dlib.shape_predictor(predictor_path)
+except RuntimeError:
+    print(f"Error loading the shape predictor. Please ensure {predictor_path} is in the current directory.")
+    print("You can download it from: http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2")
+    print("Extract the file and place it in the same directory as this script.")
+    sys.exit(1)
 
 # Load the two images
-source_image = cv2.imread('PXL_20240929_215502349.MP.png')
-target_image = cv2.imread('A_man_standing_confidently_in_a_full-body_portrait.jpg')
+source_image_path = 'PXL_20240929_215502349.MP.png'
+target_image_path = 'A_man_standing_confidently_in_a_full-body_portrait.jpg'
 
-# Resize and pad source image to match target image dimensions
-source_image = resize_and_pad(source_image, target_image.shape[:2])
+if not os.path.isfile(source_image_path) or not os.path.isfile(target_image_path):
+    print(f"Error: Source image ({source_image_path}) or target image ({target_image_path}) not found.")
+    print("Please ensure both images are in the current directory.")
+    sys.exit(1)
 
-# Convert images to grayscale
-target_gray = cv2.cvtColor(target_image, cv2.COLOR_BGR2GRAY)
-source_gray = cv2.cvtColor(source_image, cv2.COLOR_BGR2GRAY)
+source_image = cv2.imread(source_image_path)
+target_image = cv2.imread(target_image_path)
 
-# Use Haar cascades to detect faces in both images
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+# Detect faces in both images
+source_faces = detector(source_image)
+target_faces = detector(target_image)
 
-# Detect faces in the target image
-target_faces = face_cascade.detectMultiScale(target_gray, scaleFactor=1.1, minNeighbors=5)
+if len(source_faces) == 0 or len(target_faces) == 0:
+    print("Error: Could not detect faces in one or both of the images.")
+    print("Please ensure the images contain clear, front-facing portraits.")
+    sys.exit(1)
 
-# Detect faces in the source image
-source_faces = face_cascade.detectMultiScale(source_gray, scaleFactor=1.1, minNeighbors=5)
+# Get the facial landmarks for both faces
+source_landmarks = predictor(source_image, source_faces[0])
+target_landmarks = predictor(target_image, target_faces[0])
 
-# Ensure faces are detected in both images
-if len(target_faces) == 0 or len(source_faces) == 0:
-    raise Exception("Could not detect faces in one of the images")
+# Convert landmarks to NumPy arrays
+source_landmarks_points = np.array([(p.x, p.y) for p in source_landmarks.parts()])
+target_landmarks_points = np.array([(p.x, p.y) for p in target_landmarks.parts()])
 
-# Get the coordinates of the face in the target image
-(target_x, target_y, target_w, target_h) = target_faces[0]
+# Calculate affine transform for aligning eyes
+left_eye_source = np.mean(source_landmarks_points[36:42], axis=0)
+right_eye_source = np.mean(source_landmarks_points[42:48], axis=0)
+left_eye_target = np.mean(target_landmarks_points[36:42], axis=0)
+right_eye_target = np.mean(target_landmarks_points[42:48], axis=0)
 
-# Get the coordinates of the face in the source image
-(source_x, source_y, source_w, source_h) = source_faces[0]
+source_eyes_center = (left_eye_source + right_eye_source) / 2
+target_eyes_center = (left_eye_target + right_eye_target) / 2
 
-# Print dimensions for debugging
-print(f"Target Face Coordinates: x={target_x}, y={target_y}, w={target_w}, h={target_h}")
-print(f"Source Face Coordinates: x={source_x}, y={source_y}, w={source_w}, h={source_h}")
-print(f"Target Image Shape: {target_image.shape}")
-print(f"Source Image Shape: {source_image.shape}")
+angle = np.arctan2(right_eye_target[1] - left_eye_target[1],
+                   right_eye_target[0] - left_eye_target[0]) - \
+        np.arctan2(right_eye_source[1] - left_eye_source[1],
+                   right_eye_source[0] - left_eye_source[0])
 
-# Crop the face region from the source image
-source_face = source_image[source_y:source_y+source_h, source_x:source_x+source_w]
+scale = np.linalg.norm(right_eye_target - left_eye_target) / \
+        np.linalg.norm(right_eye_source - left_eye_source)
 
-# Resize the source face to match the dimensions of the target face
-resized_source_face = cv2.resize(source_face, (target_w, target_h))
+rotation_matrix = cv2.getRotationMatrix2D(tuple(source_eyes_center), np.degrees(angle), scale)
+rotation_matrix[:, 2] += target_eyes_center - source_eyes_center
 
-# Create a mask for the full target image
-full_target_mask = np.zeros(target_image.shape[:2], dtype=np.uint8)
+# Apply the affine transformation
+aligned_source_image = cv2.warpAffine(source_image, rotation_matrix, (target_image.shape[1], target_image.shape[0]))
 
-# Create an elliptical mask for better blending
-center = (target_w // 2, target_h // 2)
-axes = (target_w // 2, target_h // 2)
-cv2.ellipse(full_target_mask, (target_x + center[0], target_y + center[1]), axes, 0, 0, 360, (255, 255, 255), -1)
+# Get the face mask for the aligned source image
+aligned_source_face = detector(aligned_source_image)[0]
+aligned_source_landmarks = predictor(aligned_source_image, aligned_source_face)
+aligned_source_landmarks_points = np.array([(p.x, p.y) for p in aligned_source_landmarks.parts()])
 
-# Match histograms to better blend the source face into the target image
-source_face_histogram_equalized = cv2.equalizeHist(cv2.cvtColor(resized_source_face, cv2.COLOR_BGR2GRAY))
-source_face_final = cv2.merge((source_face_histogram_equalized, source_face_histogram_equalized, source_face_histogram_equalized))
+mask = get_face_mask(aligned_source_image, aligned_source_landmarks_points)
 
-# Calculate the center of the target face region for seamless cloning
-center = (target_x + target_w // 2, target_y + target_h // 2)
-print(f"Calculated Center: {center}")
+# Correct colors
+warped_corrected_img = correct_colours(target_image, aligned_source_image, target_landmarks_points)
 
-# Ensure source_face_final matches the dimensions of the target face region
-source_face_final = cv2.resize(source_face_final, (target_w, target_h))
+# Combine the images
+output = target_image * (1.0 - mask) + warped_corrected_img * mask
 
-# Create a region of interest (ROI) in the target image
-roi = target_image[target_y:target_y+target_h, target_x:target_x+target_w]
-
-# Perform seamless cloning on the ROI
-output_roi = cv2.seamlessClone(source_face_final, roi, full_target_mask[target_y:target_y+target_h, target_x:target_x+target_w], (target_w//2, target_h//2), cv2.NORMAL_CLONE)
-
-# Place the output ROI back into the target image
-output_image = target_image.copy()
-output_image[target_y:target_y+target_h, target_x:target_x+target_w] = output_roi
+# Convert back to uint8
+output = output.astype(np.uint8)
 
 # Display the result
-cv2.imshow("Face Swapped Image", output_image)
+cv2.imshow("Face Swapped Image", output)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
 # Save the final output
-cv2.imwrite("face_swapped_output.jpg", output_image)
+cv2.imwrite("face_swapped_output.jpg", output)
+print("Face swap completed successfully. Output saved as 'face_swapped_output.jpg'.")
