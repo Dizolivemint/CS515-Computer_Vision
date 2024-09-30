@@ -43,6 +43,40 @@ def download_shape_predictor():
     os.remove(bz2_file)
     print("Shape predictor file downloaded and extracted successfully.")
 
+def align_eyes(source_image, source_landmarks, target_landmarks, target_shape):
+    # Get eye landmarks
+    left_eye_source = np.mean(source_landmarks[36:42], axis=0)
+    right_eye_source = np.mean(source_landmarks[42:48], axis=0)
+    left_eye_target = np.mean(target_landmarks[36:42], axis=0)
+    right_eye_target = np.mean(target_landmarks[42:48], axis=0)
+
+    # Calculate angle for rotation
+    source_angle = np.degrees(np.arctan2(right_eye_source[1] - left_eye_source[1],
+                                         right_eye_source[0] - left_eye_source[0]))
+    target_angle = np.degrees(np.arctan2(right_eye_target[1] - left_eye_target[1],
+                                         right_eye_target[0] - left_eye_target[0]))
+    rotation_angle = target_angle - source_angle
+
+    # Calculate scaling factor
+    source_eye_distance = np.linalg.norm(right_eye_source - left_eye_source)
+    target_eye_distance = np.linalg.norm(right_eye_target - left_eye_target)
+    scale = target_eye_distance / source_eye_distance
+
+    # Get the center of the source face
+    source_center = np.mean(source_landmarks, axis=0)
+
+    # Create rotation matrix
+    rotation_matrix = cv2.getRotationMatrix2D(tuple(source_center), rotation_angle, scale)
+
+    # Adjust the matrix to move the source face to the target face position
+    target_center = np.mean(target_landmarks, axis=0)
+    rotation_matrix[:, 2] += target_center - source_center
+
+    # Apply the transformation
+    aligned_image = cv2.warpAffine(source_image, rotation_matrix, (target_shape[1], target_shape[0]), borderMode=cv2.BORDER_REFLECT)
+
+    return aligned_image
+  
 # Check if the shape predictor file exists, if not, download it
 predictor_path = "shape_predictor_68_face_landmarks.dat"
 if not os.path.isfile(predictor_path):
@@ -125,6 +159,14 @@ output = target_image * (1.0 - mask) + warped_corrected_img * mask
 
 # Convert back to uint8
 output = output.astype(np.uint8)
+
+# Display the source
+cv2.imshow("Source Image", source_image)
+cv2.waitKey(0)
+
+# Display the target
+cv2.imshow("Target Image", target_image)
+cv2.waitKey(0)
 
 # Display the result
 cv2.imshow("Face Swapped Image", output)
