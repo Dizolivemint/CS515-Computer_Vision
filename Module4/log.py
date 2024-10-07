@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 import os
 import glob
 
@@ -34,15 +35,44 @@ def apply_filters(image, kernel_size, sigma=1):
 
     # Gaussian followed by Laplacian
     gaussian_laplacian = cv2.Laplacian(gaussian, cv2.CV_64F, ksize=kernel_size)
-
+    
     return gaussian, laplacian, gaussian_laplacian
 
-def display_images(images, titles):
-    for i, (img, title) in enumerate(zip(images, titles)):
-        cv2.imshow(title, img)
+def display_images(image, sigma):
+    # Create figure for subplots
+    fig, axs = plt.subplots(3, 3, figsize=(15, 15))
+    fig.suptitle(f'Image Filtering Comparison with Sigma={sigma}', fontsize=16)
 
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # Apply filters for each kernel size
+    kernels = [3, 5, 7]
+    filter_names = ["Gaussian", "Laplacian", "Gaussian + Laplacian"]
+
+    for i, kernel_size in enumerate(kernels):
+        gaussian, laplacian, gaussian_laplacian = apply_filters(image, kernel_size, sigma)
+
+        # Place images in subplots
+        axs[i, 0].imshow(gaussian, cmap='gray')
+        axs[i, 0].set_title(f'Gaussian {kernel_size}x{kernel_size}')
+        axs[i, 1].imshow(laplacian, cmap='gray')
+        axs[i, 1].set_title(f'Laplacian {kernel_size}x{kernel_size}')
+        axs[i, 2].imshow(gaussian_laplacian, cmap='gray')
+        axs[i, 2].set_title(f'Gauss + Laplacian {kernel_size}x{kernel_size}')
+
+        # Set row labels
+        axs[i, 0].set_ylabel(f'{kernel_size}x{kernel_size} Kernel', fontsize=12)
+
+    # Set column labels
+    for j, col in enumerate(filter_names):
+        axs[0, j].set_xlabel(col, fontsize=14)
+
+    # Remove axis
+    for ax in axs.flat:
+        ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+
     
 def __init__():
   # Load the source image
@@ -54,22 +84,10 @@ def __init__():
   # Convert the image to grayscale
   source_image = cv2.cvtColor(source_image, cv2.COLOR_BGR2GRAY)
   
-  # Set sigma value
-  sigma = 1
-  
-  # 3x3 kernel
-  kernel_size = 3
-  gaussian, laplacian, gaussian_laplacian = apply_filters(source_image, kernel_size, sigma)
-  display_images([gaussian, laplacian, gaussian_laplacian], ['Gaussian Filter', 'Laplacian Filter', 'Gaussian-Laplacian Filter'])
-  
-  # 5x5 kernel
-  kernel_size = 5
-  gaussian, laplacian, gaussian_laplacian = apply_filters(source_image, kernel_size, sigma)
-  display_images([gaussian, laplacian, gaussian_laplacian], ['Gaussian Filter', 'Laplacian Filter', 'Gaussian-Laplacian Filter'])
-  
-  # 7x7 kernel
-  kernel_size = 7
-  gaussian, laplacian, gaussian_laplacian = apply_filters(source_image, kernel_size, sigma)
-  display_images([gaussian, laplacian, gaussian_laplacian], ['Gaussian Filter', 'Laplacian Filter', 'Gaussian-Laplacian Filter'])
+  display_images(source_image, sigma=1)
+  display_images(source_image, sigma=2)
+  display_images(source_image, sigma=3)
+  display_images(source_image, sigma=4)
+  display_images(source_image, sigma=5)
   
 __init__()
