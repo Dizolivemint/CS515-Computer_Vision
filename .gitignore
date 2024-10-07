@@ -168,3 +168,8 @@ images/
 
 # ignore huge dat files that will be downloaded automatically
 *.dat
+
+# ignore image files
+*.jpg
+*.jpeg
+*.png
