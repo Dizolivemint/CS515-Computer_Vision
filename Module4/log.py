@@ -36,19 +36,22 @@ def apply_filters(image, kernel_size, sigma=1):
     # Gaussian followed by Laplacian
     gaussian_laplacian = cv2.Laplacian(gaussian, cv2.CV_64F, ksize=kernel_size)
     
-    return gaussian, laplacian, gaussian_laplacian
+    # Canny edge detection
+    canny = cv2.Canny(gaussian, threshold1=100, threshold2=200)
+    
+    return gaussian, laplacian, gaussian_laplacian, canny
 
 def display_images(image, sigma):
-    # Create figure for subplots
-    fig, axs = plt.subplots(3, 3, figsize=(15, 15))
+    # Create figure for subplots (4 columns now)
+    fig, axs = plt.subplots(3, 4, figsize=(20, 15))  # Adjusted for 4 columns
     fig.suptitle(f'Image Filtering Comparison with Sigma={sigma}', fontsize=16)
 
     # Apply filters for each kernel size
     kernels = [3, 5, 7]
-    filter_names = ["Gaussian", "Laplacian", "Gaussian + Laplacian"]
+    filter_names = ["Gaussian", "Laplacian", "Gaussian + Laplacian", "Canny Edges"]
 
     for i, kernel_size in enumerate(kernels):
-        gaussian, laplacian, gaussian_laplacian = apply_filters(image, kernel_size, sigma)
+        gaussian, laplacian, gaussian_laplacian, canny = apply_filters(image, kernel_size, sigma)
 
         # Place images in subplots
         axs[i, 0].imshow(gaussian, cmap='gray')
@@ -57,6 +60,8 @@ def display_images(image, sigma):
         axs[i, 1].set_title(f'Laplacian {kernel_size}x{kernel_size}')
         axs[i, 2].imshow(gaussian_laplacian, cmap='gray')
         axs[i, 2].set_title(f'Gauss + Laplacian {kernel_size}x{kernel_size}')
+        axs[i, 3].imshow(canny, cmap='gray')
+        axs[i, 3].set_title(f'Canny {kernel_size}x{kernel_size}')
 
         # Set row labels
         axs[i, 0].set_ylabel(f'{kernel_size}x{kernel_size} Kernel', fontsize=12)
@@ -71,8 +76,6 @@ def display_images(image, sigma):
 
     plt.tight_layout()
     plt.show()
-
-
     
 def __init__():
   # Load the source image
