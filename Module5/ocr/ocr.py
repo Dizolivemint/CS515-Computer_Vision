@@ -40,50 +40,6 @@ def preprocess_image(image):
                                    cv2.THRESH_BINARY_INV, 11, 2)
     return thresh
 
-def thinning(image):
-    """
-    Perform thinning operation on the image.
-    
-    Args:
-    image (numpy.ndarray): The input binary image.
-    
-    Returns:
-    numpy.ndarray: The thinned image.
-    """
-    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3,3))
-    thin = np.zeros(image.shape, dtype='uint8')
-    while True:
-        eroded = cv2.erode(image, kernel)
-        opened = cv2.dilate(eroded, kernel)
-        subset = image - opened
-        thin = cv2.bitwise_or(thin, subset)
-        image = eroded.copy()
-        if cv2.countNonZero(image) == 0:
-            break
-    return thin
-
-def fill_holes(image):
-    """
-    Fill holes in the text using morphological operations.
-    
-    Args:
-    image (numpy.ndarray): The input binary image.
-    
-    Returns:
-    numpy.ndarray: The image with filled holes.
-    """
-    # Perform morphological closing
-    kernel = np.ones((3,3), np.uint8)
-    closing = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel, iterations=2)
-    
-    # Fill holes
-    contours, _ = cv2.findContours(closing, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    mask = np.zeros(closing.shape, np.uint8)
-    for contour in contours:
-        cv2.drawContours(mask, [contour], 0, (255), -1)
-    
-    return mask
-
 def enhance_cursive(image, kernel_size=3):
     """
     Enhance cursive text using morphological operations.
@@ -101,8 +57,6 @@ def enhance_cursive(image, kernel_size=3):
     erosion = cv2.erode(image, kernel, iterations=1)
     opening = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
     closing = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
-    thinned = thinning(image)
-    filled = fill_holes(erosion)  # Apply hole filling to the eroded image
     
     return {
         'original': image,
