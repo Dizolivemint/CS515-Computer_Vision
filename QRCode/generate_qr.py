@@ -47,7 +47,7 @@ def save_image(image, output_path):
 
 # --- Main Script ---
 # Data to encode in the QR code
-data = "https://example.com"
+data = "https://wheelof.xyz"
 
 # Generate styled QR code
 qr_code_img = generate_styled_qr_code(data, size=15)
